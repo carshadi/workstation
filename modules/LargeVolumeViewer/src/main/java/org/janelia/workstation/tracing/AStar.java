@@ -43,7 +43,7 @@ public class AStar {
     }
     private NeighborClass neighborClass = NeighborClass.TWENTYSIX_CONNECTED;
     
-    private boolean debug = false;
+    private boolean debug = true;
     // Cached values
     // stepCostLowerBound has a dramatic effect on performance 9-25-2013
     // Numbers larger than <some small amount> take more time and cause more nodes to be explored.
