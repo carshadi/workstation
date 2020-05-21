@@ -26,7 +26,7 @@ public class PathTraceToParentWorker extends BackgroundWorker {
     private PathTraceListener pathTraceListener;
 
     // timeout in seconds
-    private double timeout = 10.0;
+    private double timeout = 60.0;
 
     public PathTraceToParentWorker(PathTraceToParentRequest request) {
         this.request = request;
