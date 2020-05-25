@@ -118,14 +118,14 @@ public class AnnotationManager implements UpdateAnchorListener, PathTraceListene
 
     // ----- constants
     // AUTOMATIC_TRACING_TIMEOUT for automatic tracing in seconds
-    private static final double AUTOMATIC_TRACING_TIMEOUT = 10.0;
+    private static final double AUTOMATIC_TRACING_TIMEOUT = 60.0;
 
     // when dragging to merge, how close in pixels (squared) to trigger
     //  a merge instead of a move
     // this distance chosen by trial and error; I annotated a neuron
     //  at what seemed like a reasonable zoom level, and I experimented
     //  until the distance threshold seemed right
-    private static final double DRAG_MERGE_THRESHOLD_SQUARED = 250.0;
+    private static final double DRAG_MERGE_THRESHOLD_SQUARED = 125.0;
 
     public AnnotationManager(AnnotationModel annotationModel, QuadViewUi quadViewUi,
         LargeVolumeViewerTranslator lvvTranslator, TileServer tileServer) {

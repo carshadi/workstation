@@ -8,6 +8,9 @@ import org.janelia.workstation.core.workers.BackgroundWorker;
 import org.janelia.workstation.gui.large_volume_viewer.Subvolume;
 import org.janelia.workstation.gui.large_volume_viewer.TileFormat;
 import org.janelia.workstation.gui.large_volume_viewer.controller.PathTraceListener;
+import org.perf4j.StopWatch;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -21,6 +24,8 @@ import java.util.List;
  * djo, 1/14
  */
 public class PathTraceToParentWorker extends BackgroundWorker {
+
+    private static final Logger log = LoggerFactory.getLogger(PathTraceToParentWorker.class);
 
     private PathTraceToParentRequest request;
     private PathTraceListener pathTraceListener;
@@ -83,13 +88,19 @@ public class PathTraceToParentWorker extends BackgroundWorker {
         astar.setVoxelSizes(tileFormat.getVoxelMicrometers());
 
         setStatus("Tracing");
+        StopWatch stopwatch = new StopWatch();
+        stopwatch.start();
         List<ZoomedVoxelIndex> path = astar.trace(zv1, zv2, timeout); // This is the slow part
+        stopwatch.stop();
+        log.info("autotraced path; elapsed time = {} ms", stopwatch.getElapsedTime());
+
         if (path == null) {
             // probably timed out; I don't see any other way it could fail
             // we don't do anything if we fail (would be nice to visually indicated it)
             setStatus("Timed out");
         } else {
             //DEBUG System.out.println("Original path length: " + path.size());
+            log.info("autotraced path; length = {} voxels", path.size());
             final List<VoxelPosition> reducedPath = simplifyPath(path);
             if (!reducedPath.contains(zviToVoxel(path.get(0)))) {
                 reducedPath.add(0, zviToVoxel(path.get(0)));
@@ -98,10 +109,15 @@ public class PathTraceToParentWorker extends BackgroundWorker {
                 reducedPath.add(zviToVoxel(path.get(path.size() - 1)));
             }
             List<Integer> intensities = new ArrayList<>();
+            int sumIntensities = 0;
             for (VoxelPosition p : reducedPath) {
                 int intensity = subvolume.getIntensityGlobal(p, 0);
                 intensities.add(intensity);
+                sumIntensities += intensity;
             }
+            double averageIntensity = (double)sumIntensities / intensities.size();
+            // floating point errors are OK
+            log.info("autotraced path; avg intensity = {}", (double)Math.round(averageIntensity * 100d) / 100d);
 
             //DEBUG dumpFullAndSimplified( path, reducedPath );
             setStatus("Finishing");
