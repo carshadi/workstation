@@ -92,36 +92,27 @@ public class AStar {
                 goal0.getY() - volume.getOrigin().getY(),
                 goal0.getZ() - volume.getOrigin().getZ()));
 
-        // The set of nodes already evaluated
-        Set<Node> closedSet = new HashSet<Node>();
-        // The sets of tentative nodes to be evaluated, initially containing the start and goal nodes.
-        Comparator<Node> nodeComparator = new NodeComparator();
-        PriorityQueue<Node> openSetForward = new PriorityQueue<Node>(10, nodeComparator);
-        PriorityQueue<Node> openSetBackward = new PriorityQueue<Node>(10, nodeComparator);
-        openSetForward.add(start);
-        openSetBackward.add(goal);
-
-        Map<Node, Node> parentsForward = new HashMap<Node, Node>();
-        Map<Node, Node> parentsBackward = new HashMap<Node, Node>();
-
-        Map<Node, Double> distanceForward = new HashMap<Node, Double>();
-        Map<Node, Double> distanceBackward = new HashMap<Node, Double>();
-
-        double bestPathLength = Double.POSITIVE_INFINITY;
-
         double fForward = heuristicCostEstimate(start.index, goal.index);
         double fBackward = heuristicCostEstimate(goal.index, start.index);
 
-        start.fScore = fForward;
-        goal.fScore = fBackward;
+        // The sets of tentative nodes to be evaluated, initially containing the start and goal nodes.
+        start.fScoreForward = fForward;
+        goal.fScoreBackward = fBackward;
+        start.gScoreForward = 0d;
+        goal.gScoreBackward = 0d;
+        Comparator<Node> nodeComparatorForward = new NodeComparatorForward();
+        Comparator<Node> nodeComparatorBackward = new NodeComparatorBackward();
+        PriorityQueue<Node> openSetForward = new PriorityQueue<Node>(10, nodeComparatorForward);
+        PriorityQueue<Node> openSetBackward = new PriorityQueue<Node>(10, nodeComparatorBackward);
+        openSetForward.add(start);
+        openSetBackward.add(goal);
+
+        // The set of nodes already evaluated
+        Set<Node> closedSet = new HashSet<Node>();
+
+        double bestPathLength = Double.POSITIVE_INFINITY;
 
         Node touchNode = null;
-
-        parentsForward.put(start, null);
-        parentsBackward.put(goal, null);
-
-        distanceForward.put(start, 0d);
-        distanceBackward.put(goal, 0d);
 
         long startTime = System.currentTimeMillis();
         long checkedVoxelCount = 0;
@@ -129,145 +120,98 @@ public class AStar {
             if (openSetForward.size() < openSetBackward.size()) {
                 Node current = openSetForward.poll();
                 closedSet.add(current);
-
                 checkedVoxelCount += 1;
-                if (debug && checkedVoxelCount % 10000 == 0)
-                    System.out.println("Examined " + checkedVoxelCount + " voxels");
+//                if (debug && checkedVoxelCount % 10000 == 0)
+//                    System.out.println("Examined " + checkedVoxelCount + " voxels");
                 // check timeout
-				if (checkedVoxelCount % 1000 == 0) {
-					if (System.currentTimeMillis() - startTime > timeout * 1000) {
-						if (debug) {
-							System.out.println("A-star tracing timed out");
-							System.out.println("Examined " + checkedVoxelCount + " voxels");
-						}
-						log.warn("A-star tracing timed out, " + checkedVoxelCount + " voxels examined");
-						return null;
-					}
-				}
-
-                if (distanceForward.get(current) + heuristicCostEstimate(current.index, goal.index)
-                        - heuristicCostEstimate(goal.index, goal.index) >= bestPathLength
-                        || distanceForward.get(current) + fBackward
-                        - heuristicCostEstimate(current.index, start.index) >= bestPathLength) {
-                    // reject current node
-                    continue;
+                if (checkedVoxelCount % 1000 == 0) {
+                    if (searchTimedOut(checkedVoxelCount, startTime, timeout)) {
+                        return null;
+                    }
+                }
+                if (current.gScoreForward
+                        + heuristicCostEstimate(current.index, goal.index)
+                        - heuristicCostEstimate(goal.index, goal.index)
+                        >= bestPathLength
+                        ||
+                        current.gScoreForward
+                                + fBackward
+                                - heuristicCostEstimate(current.index, start.index)
+                                >= bestPathLength) {
+                    // current is rejected
 
                 } else {
-                    // stabilize current node
-                    for (VoxelIndex childIndex : getNeighbors(current.index)) {
-                        Node child = getNode(childIndex);
-                        if (closedSet.contains(child)) {
+                    // current is stabilized
+                    for (VoxelIndex neighborIndex : getNeighbors(current.index)) {
+                        Node neighbor = getNode(neighborIndex);
+                        if (closedSet.contains(neighbor)) {
                             continue;
                         }
-
-                        double tentativeScore = distanceForward.get(current)
-                                + distanceBetween(current.index, child.index);
-
-                        if (!distanceForward.containsKey(child)) {
-                            distanceForward.put(child, tentativeScore);
-                            parentsForward.put(child, current);
-                            child.fScore = tentativeScore + heuristicCostEstimate(child.index, goal.index);
-                            openSetForward.add(child);
-
-                            if (distanceBackward.containsKey(child)) {
-                                double pathLength = tentativeScore + distanceBackward.get(child);
-                                if (bestPathLength > pathLength) {
-                                    bestPathLength = pathLength;
-                                    touchNode = child;
-                                }
-                            }
-
-                        } else if (distanceForward.get(child) > tentativeScore) {
-                            distanceForward.put(child, tentativeScore);
-                            parentsForward.put(child, current);
-                            // decrease priority
-                            openSetForward.remove(child);
-                            openSetForward.add(child);
-
-                            if (distanceBackward.containsKey(child)) {
-                                double pathLength = tentativeScore + distanceBackward.get(child);
-                                if (bestPathLength > pathLength) {
-                                    bestPathLength = pathLength;
-                                    touchNode = child;
-                                }
-                            }
+                        double tentativeGScoreForward = current.gScoreForward + distanceBetween(current.index, neighbor.index);
+                        if (tentativeGScoreForward < neighbor.gScoreForward) {
+                            neighbor.gScoreForward = tentativeGScoreForward;
+                            neighbor.fScoreForward = neighbor.gScoreForward + heuristicCostEstimate(neighbor.index, goal.index);
+                            neighbor.cameFromForward = current;
+                            openSetForward.add(neighbor);
+                        }
+                        double pathLength = neighbor.gScoreForward + neighbor.gScoreBackward;
+                        if (pathLength < bestPathLength) {
+                            bestPathLength = pathLength;
+                            touchNode = neighbor;
                         }
                     }
                 }
-
                 if (!openSetForward.isEmpty()) {
-                    Node node = openSetForward.peek();
-                    fForward = distanceForward.get(node) + heuristicCostEstimate(node.index, goal.index);
+                    fForward = openSetForward.peek().fScoreForward;
                 }
-
-            } else {
+            }
+            // Now pass in the opposite direction
+            else {
                 Node current = openSetBackward.poll();
                 closedSet.add(current);
-
                 checkedVoxelCount += 1;
-                if (debug && checkedVoxelCount % 10000 == 0)
-                    System.out.println("Examined " + checkedVoxelCount + " voxels");
+//                if (debug && checkedVoxelCount % 10000 == 0)
+//                    System.out.println("Examined " + checkedVoxelCount + " voxels");
                 // check timeout
-				if (checkedVoxelCount % 1000 == 0) {
-					if (System.currentTimeMillis() - startTime > timeout * 1000) {
-						if (debug) {
-							System.out.println("A-star tracing timed out");
-							System.out.println("Examined " + checkedVoxelCount + " voxels");
-						}
-						log.warn("A-star tracing timed out, " + checkedVoxelCount + " voxels examined");
-						return null;
-					}
-				}
-
-                if (distanceBackward.get(current) + heuristicCostEstimate(current.index, start.index)
-                        - heuristicCostEstimate(start.index, start.index) >= bestPathLength
-                        || distanceBackward.get(current) + fForward
-                        - heuristicCostEstimate(current.index, goal.index) >= bestPathLength) {
-                    // reject current node
-                    continue;
+                if (checkedVoxelCount % 1000 == 0) {
+                    if (searchTimedOut(checkedVoxelCount, startTime, timeout)) {
+                        return null;
+                    }
+                }
+                if (current.gScoreBackward
+                        + heuristicCostEstimate(current.index, start.index)
+                        - heuristicCostEstimate(start.index, start.index)
+                        >= bestPathLength
+                        ||
+                        current.gScoreBackward
+                                + fForward
+                                - heuristicCostEstimate(current.index, goal.index)
+                                >= bestPathLength) {
+                    // current is rejected
 
                 } else {
-                    // stabilize current node
-                    for (VoxelIndex parentIndex : getNeighbors(current.index)) {
-                        Node parent = getNode(parentIndex);
-                        if (closedSet.contains(parent)) {
+                    // current is stabilized
+                    for (VoxelIndex neighborIndex : getNeighbors(current.index)) {
+                        Node neighbor = getNode(neighborIndex);
+                        if (closedSet.contains(neighbor)) {
                             continue;
                         }
-
-                        double tentativeScore = distanceBackward.get(current)
-                                + distanceBetween(parent.index, current.index);
-
-                        if (!distanceBackward.containsKey(parent)) {
-                            distanceBackward.put(parent, tentativeScore);
-                            parentsBackward.put(parent, current);
-                            parent.fScore = tentativeScore + heuristicCostEstimate(parent.index, start.index);
-                            openSetBackward.add(parent);
-
-                            if (distanceForward.containsKey(parent)) {
-                                double pathLength = tentativeScore + distanceForward.get(parent);
-                                if (bestPathLength > pathLength) {
-                                    bestPathLength = pathLength;
-                                    touchNode = parent;
-                                }
-                            }
-
-                        } else if (distanceBackward.get(parent) > tentativeScore) {
-                            distanceBackward.put(parent, tentativeScore);
-                            parentsBackward.put(parent, current);
-                            parent.fScore = tentativeScore + heuristicCostEstimate(parent.index, start.index);
-                            // decrease priority
-                            openSetBackward.remove(parent);
-                            openSetBackward.add(parent);
-
-                            if (distanceForward.containsKey(parent)) {
-                                double pathLength = tentativeScore + distanceForward.get(parent);
-                                if (bestPathLength > pathLength) {
-                                    bestPathLength = pathLength;
-                                    touchNode = parent;
-                                }
-                            }
+                        double tentativeGScoreBackward = current.gScoreBackward + distanceBetween(current.index, neighbor.index);
+                        if (tentativeGScoreBackward < neighbor.gScoreBackward) {
+                            neighbor.gScoreBackward = tentativeGScoreBackward;
+                            neighbor.fScoreBackward = neighbor.gScoreBackward + heuristicCostEstimate(neighbor.index, start.index);
+                            neighbor.cameFromBackward = current;
+                            openSetBackward.add(neighbor);
+                        }
+                        double pathLength = neighbor.gScoreBackward + neighbor.gScoreForward;
+                        if (pathLength < bestPathLength) {
+                            bestPathLength = pathLength;
+                            touchNode = neighbor;
                         }
                     }
+                }
+                if (!openSetBackward.isEmpty()) {
+                    fBackward = openSetBackward.peek().fScoreBackward;
                 }
             }
         }
@@ -278,11 +222,23 @@ public class AStar {
 
         if (debug) {
             System.out.println("Examined " + checkedVoxelCount + " voxels");
-            System.out.println("Total search time (s): " + ((System.currentTimeMillis() - startTime) / 1000d));
+            System.out.println("Success; Total search time (s): " + ((System.currentTimeMillis() - startTime) / 1000d));
         }
 
-        return reconstructPath(touchNode, parentsForward, parentsBackward, start0.getZoomLevel());
+        return reconstructPath(touchNode, start0.getZoomLevel());
 
+    }
+
+    private boolean searchTimedOut(long checkedVoxelCount, double startTime, double timeout) {
+        if (System.currentTimeMillis() - startTime > timeout * 1000) {
+            if (debug) {
+                System.out.println("A-star tracing timed out");
+                System.out.println("Examined " + checkedVoxelCount + " voxels");
+            }
+            log.warn("A-star tracing timed out, " + checkedVoxelCount + " voxels examined");
+            return true;
+        }
+        return false;
     }
     
     private double distanceBetween(VoxelIndex current, VoxelIndex neighbor) {
@@ -356,28 +312,26 @@ public class AStar {
 
     private List<ZoomedVoxelIndex> reconstructPath(
             Node touchNode,
-            Map<Node, Node> parentsA,
-            Map<Node, Node> parentsB,
             ZoomLevel zoomLevel) {
         List<ZoomedVoxelIndex> forwardPath = new Vector<ZoomedVoxelIndex>();
-        Node p = parentsA.get(touchNode);
+        Node p = touchNode.cameFromForward;
         while (p != null) {
             forwardPath.add(new ZoomedVoxelIndex(zoomLevel,
                     p.index.getX() + volume.getOrigin().getX(),
                     p.index.getY() + volume.getOrigin().getY(),
                     p.index.getZ() + volume.getOrigin().getZ()));
-            p = parentsA.get(p);
+            p = p.cameFromForward;
         }
         List<ZoomedVoxelIndex> reversedForwardPath = Lists.reverse(forwardPath);
 
         List<ZoomedVoxelIndex> backwardsPath = new Vector<ZoomedVoxelIndex>();
-        p = parentsB.get(touchNode);
+        p = touchNode.cameFromBackward;
         while (p != null) {
             backwardsPath.add(new ZoomedVoxelIndex(zoomLevel,
                     p.index.getX() + volume.getOrigin().getX(),
                     p.index.getY() + volume.getOrigin().getY(),
                     p.index.getZ() + volume.getOrigin().getZ()));
-            p = parentsB.get(p);
+            p = p.cameFromBackward;
         }
 
         List<ZoomedVoxelIndex> finalPath = new Vector<ZoomedVoxelIndex>();
@@ -533,22 +487,38 @@ public class AStar {
             return index.equals(other.index);
         }
 
-        double fScore = Double.NaN;
-        double gScore = Double.NaN;
-        Node cameFrom = null;
+        double fScoreForward = Double.NaN;
+        double fScoreBackward = Double.NaN;
+        double gScoreForward = Double.POSITIVE_INFINITY;
+        double gScoreBackward = Double.POSITIVE_INFINITY;
+        Node cameFromForward = null;
+        Node cameFromBackward = null;
         VoxelIndex index;
     }
     
-	static class NodeComparator implements Comparator<Node> {
-		@Override
+	static class NodeComparatorForward implements Comparator<Node> {
+
 		public int compare(Node n1, Node n2) {
-			if (n1.fScore < n2.fScore) {
+			if (n1.fScoreForward < n2.fScoreForward) {
 				return -1;
 			}
-			if (n1.fScore > n2.fScore) {
+			if (n1.fScoreForward > n2.fScoreForward) {
 				return 1;
 			}
 			return 0;
 		}
 	}
+
+    static class NodeComparatorBackward implements Comparator<Node> {
+
+        public int compare(Node n1, Node n2) {
+            if (n1.fScoreBackward < n2.fScoreBackward) {
+                return -1;
+            }
+            if (n1.fScoreBackward > n2.fScoreBackward) {
+                return 1;
+            }
+            return 0;
+        }
+    }
 }
