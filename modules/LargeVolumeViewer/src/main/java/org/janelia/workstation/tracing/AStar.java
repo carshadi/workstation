@@ -31,8 +31,9 @@ public class AStar {
     enum DistanceMetric {
         EUCLIDEAN,
         MANHATTAN,
+        DIAGONAL,
     }
-    private DistanceMetric distanceMetric = DistanceMetric.EUCLIDEAN;
+    private DistanceMetric distanceMetric = DistanceMetric.DIAGONAL;
     
     // How many neighbors to examine for each voxel?
     // TODO - not implemented yet
@@ -49,6 +50,9 @@ public class AStar {
     // Numbers larger than <some small amount> take more time and cause more nodes to be explored.
     // Non-zero values prevent meandering path.
     private final double stepCostLowerBound = 1e-60;
+
+    private static final double SQUARE_ROOT_2 = Math.sqrt(2);
+    private static final double SQUARE_ROOT_3 = Math.sqrt(3);
     
     private double minStepCost = Double.NaN; // will be set from volume statistics
     private Subvolume volume;
@@ -154,6 +158,7 @@ public class AStar {
                             neighbor.cameFromForward = current;
                             openSetForward.add(neighbor);
                         }
+                        // A finite value indicates a meeting point between the opposing searches
                         double pathLength = neighbor.gScoreForward + neighbor.gScoreBackward;
                         if (pathLength < bestPathLength) {
                             bestPathLength = pathLength;
@@ -254,6 +259,15 @@ public class AStar {
             distance += Math.abs(dx);
             distance += Math.abs(dy);
             distance += Math.abs(dz);
+        } else if (distanceMetric == DistanceMetric.DIAGONAL) {
+            dx = Math.abs(dx);
+            dy = Math.abs(dy);
+            dz = Math.abs(dz);
+            double dMin = Math.min(Math.min(dx, dy), dz);
+            double dMax = Math.max(Math.max(dx, dy), dz);
+            // Probably some rounding going on...
+            double dMid = dx + dy + dz - dMin - dMax;
+            distance  = (SQUARE_ROOT_3 - SQUARE_ROOT_2)*dMin + (SQUARE_ROOT_2 - 1)*dMid + dMax;
         } else if (distanceMetric == DistanceMetric.EUCLIDEAN) {
             distance = Math.sqrt(dx*dx + dy*dy + dz*dz);
         }
@@ -458,6 +472,14 @@ public class AStar {
             distance += Math.abs(dx);
             distance += Math.abs(dy);
             distance += Math.abs(dz);
+        } else if (distanceMetric == DistanceMetric.DIAGONAL) {
+            dx = Math.abs(dx);
+            dy = Math.abs(dy);
+            dz = Math.abs(dz);
+            double dMin = Math.min(Math.min(dx, dy), dz);
+            double dMax = Math.max(Math.max(dx, dy), dz);
+            double dMid = dx + dy + dz - dMin - dMax;
+            distance  = (SQUARE_ROOT_3 - SQUARE_ROOT_2)*dMin + (SQUARE_ROOT_2 - 1)*dMid + dMax;
         } else if (distanceMetric == DistanceMetric.EUCLIDEAN) {
             // TODO - cache the 6? possible distances
             distance = Math.sqrt(dx*dx + dy*dy + dz*dz);
@@ -495,19 +517,19 @@ public class AStar {
         Node cameFromBackward = null;
         VoxelIndex index;
     }
-    
-	static class NodeComparatorForward implements Comparator<Node> {
 
-		public int compare(Node n1, Node n2) {
-			if (n1.fScoreForward < n2.fScoreForward) {
-				return -1;
-			}
-			if (n1.fScoreForward > n2.fScoreForward) {
-				return 1;
-			}
-			return 0;
-		}
-	}
+    static class NodeComparatorForward implements Comparator<Node> {
+
+        public int compare(Node n1, Node n2) {
+            if (n1.fScoreForward < n2.fScoreForward) {
+                return -1;
+            }
+            if (n1.fScoreForward > n2.fScoreForward) {
+                return 1;
+            }
+            return 0;
+        }
+    }
 
     static class NodeComparatorBackward implements Comparator<Node> {
 
